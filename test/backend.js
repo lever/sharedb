@@ -1,8 +1,19 @@
 var Backend = require('../lib/backend');
 var expect = require('chai').expect;
+var sinon = require('sinon');
 
 describe('Backend', function() {
   var backend;
+  var agent = {
+    custom: {
+      foo: 'bar'
+    }
+  };
+  var fetchOptions = {
+    snapshotOptions: {
+      fizz: 'buzz'
+    }
+  };
 
   beforeEach(function() {
     backend = new Backend();
@@ -23,7 +34,7 @@ describe('Backend', function() {
 
     describe('getOps', function() {
       it('fetches all the ops', function(done) {
-        backend.getOps(null, 'books', '1984', 0, null, function(error, ops) {
+        backend.getOps(agent, 'books', '1984', 0, null, function(error, ops) {
           if (error) return done(error);
           expect(ops).to.have.length(2);
           expect(ops[0].create.data).to.eql({title: '1984'});
@@ -36,7 +47,7 @@ describe('Backend', function() {
         var options = {
           opsOptions: {metadata: true}
         };
-        backend.getOps(null, 'books', '1984', 0, null, options, function(error, ops) {
+        backend.getOps(agent, 'books', '1984', 0, null, options, function(error, ops) {
           if (error) return done(error);
           expect(ops).to.have.length(2);
           expect(ops[0].m).to.be.ok;
@@ -48,7 +59,7 @@ describe('Backend', function() {
 
     describe('fetch', function() {
       it('fetches the document', function(done) {
-        backend.fetch(null, 'books', '1984', function(error, doc) {
+        backend.fetch(agent, 'books', '1984', function(error, doc) {
           if (error) return done(error);
           expect(doc.data).to.eql({
             title: '1984',
@@ -62,9 +73,35 @@ describe('Backend', function() {
         var options = {
           snapshotOptions: {metadata: true}
         };
-        backend.fetch(null, 'books', '1984', options, function(error, doc) {
+        backend.fetch(agent, 'books', '1984', options, function(error, doc) {
           if (error) return done(error);
           expect(doc.m).to.be.ok;
+          done();
+        });
+      });
+
+      it('passes agent.custom and snapshot options to db', function(done) {
+        var getSnapshotSpy = sinon.spy(backend.db, 'getSnapshot');
+        backend.fetch(agent, 'books', '1984', fetchOptions, function(error) {
+          if (error) return done(error);
+          expect(getSnapshotSpy.args[0][3]).to.deep.equal({
+            agentCustom: agent.custom,
+            fizz: 'buzz'
+          });
+          done();
+        });
+      });
+    });
+
+    describe('fetchBulk', function() {
+      it('passes agent.custom and snapshot options to db', function(done) {
+        var getSnapshotBulkSpy = sinon.spy(backend.db, 'getSnapshotBulk');
+        backend.fetchBulk(agent, 'books', ['1984'], fetchOptions, function(error) {
+          if (error) return done(error);
+          expect(getSnapshotBulkSpy.getCall(0).args[3]).to.deep.equal({
+            agentCustom: agent.custom,
+            fizz: 'buzz'
+          });
           done();
         });
       });
@@ -72,7 +109,7 @@ describe('Backend', function() {
 
     describe('subscribe', function() {
       it('subscribes to the document', function(done) {
-        backend.subscribe(null, 'books', '1984', null, function(error, stream, snapshot) {
+        backend.subscribe(agent, 'books', '1984', null, function(error, stream, snapshot) {
           if (error) return done(error);
           expect(stream.open).to.equal(true);
           expect(snapshot.data).to.eql({
@@ -84,7 +121,7 @@ describe('Backend', function() {
             expect(data.op).to.eql(op.op);
             done();
           });
-          backend.submit(null, 'books', '1984', op, null, function(error) {
+          backend.submit(agent, 'books', '1984', op, null, function(error) {
             if (error) return done(error);
           });
         });
@@ -94,7 +131,7 @@ describe('Backend', function() {
         var options = {
           opsOptions: {metadata: true}
         };
-        backend.subscribe(null, 'books', '1984', null, options, function(error) {
+        backend.subscribe(agent, 'books', '1984', null, options, function(error) {
           expect(error.code).to.equal('ERR_DATABASE_METHOD_NOT_IMPLEMENTED');
           done();
         });
@@ -118,7 +155,7 @@ describe('Backend', function() {
         });
 
         var op = {op: {p: ['publicationYear'], oi: 1949}};
-        backend.submit(null, 'books', '1984', op, null, function(error) {
+        backend.submit(agent, 'books', '1984', op, null, function(error) {
           if (error) done(error);
         });
       });
@@ -135,7 +172,7 @@ describe('Backend', function() {
         });
 
         var op = {op: {p: ['publicationYear'], oi: 1949}};
-        backend.submit(null, 'books', '1984', op, null, function() {
+        backend.submit(agent, 'books', '1984', op, null, function() {
           // Swallow the error
         });
       });
