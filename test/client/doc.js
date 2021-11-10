@@ -1,6 +1,9 @@
 var Backend = require('../../lib/backend');
 var expect = require('chai').expect;
 var async = require('async');
+var json0 = require('ot-json0').type;
+var richText = require('rich-text').type;
+var ShareDBError = require('../../lib/error');
 var errorHandler = require('../util').errorHandler;
 
 describe('Doc', function() {
@@ -407,6 +410,43 @@ describe('Doc', function() {
       ], done);
     });
 
+    it('rolls the doc back even if the op is not invertible', function(done) {
+      var backend = this.backend;
+
+      async.series([
+        function(next) {
+          // Register the rich text type, which can't be inverted
+          json0.registerSubtype(richText);
+
+          var validOp = {p: ['richName'], oi: {ops: [{insert: 'Scooby\n'}]}};
+          doc.submitOp(validOp, function(error) {
+            expect(error).to.not.exist;
+            next();
+          });
+        },
+        function(next) {
+          // Make the server reject this insertion
+          backend.use('submit', function(_context, backendNext) {
+            backendNext(new ShareDBError(ShareDBError.CODES.ERR_UNKNOWN_ERROR, 'Custom unknown error'));
+          });
+          var nonInvertibleOp = {p: ['richName'], t: 'rich-text', o: [{insert: 'e'}]};
+
+          // The server error should get all the way back to our handler
+          doc.submitOp(nonInvertibleOp, function(error) {
+            expect(error.message).to.eql('Custom unknown error');
+            next();
+          });
+        },
+        doc.whenNothingPending.bind(doc),
+        function(next) {
+          // The doc should have been reverted successfully
+          expect(doc.data).to.eql({name: 'Scooby', richName: {ops: [{insert: 'Scooby\n'}]}});
+          next();
+        }
+      ], done);
+    });
+
+
     it('rescues an irreversible op collision', function(done) {
       // This test case attempts to reconstruct the following corner case, with
       // two independent references to the same document. We submit two simultaneous, but
@@ -473,6 +513,32 @@ describe('Doc', function() {
           doc2.submitOp({p: ['colours'], oi: 'white,black,red'}, next);
         }
       ], done);
+    });
+  });
+
+  describe('toSnapshot', function() {
+    var doc;
+    beforeEach(function(done) {
+      doc = this.connection.get('dogs', 'scooby');
+      doc.create({name: 'Scooby'}, done);
+    });
+
+    it('generates a snapshot', function() {
+      expect(doc.toSnapshot()).to.eql({
+        v: 1,
+        data: {name: 'Scooby'},
+        type: 'http://sharejs.org/types/JSONv0'
+      });
+    });
+
+    it('clones snapshot data to guard against mutation', function() {
+      var snapshot = doc.toSnapshot();
+      doc.data.name = 'Shaggy';
+      expect(snapshot).to.eql({
+        v: 1,
+        data: {name: 'Scooby'},
+        type: 'http://sharejs.org/types/JSONv0'
+      });
     });
   });
 });

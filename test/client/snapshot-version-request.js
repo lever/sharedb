@@ -4,6 +4,8 @@ var MemoryDb = require('../../lib/db/memory');
 var MemoryMilestoneDb = require('../../lib/milestone-db/memory');
 var sinon = require('sinon');
 var async = require('async');
+var json0v2 = require('ot-json0-v2').type;
+var types = require('../../lib/types');
 
 describe('SnapshotVersionRequest', function() {
   var backend;
@@ -436,6 +438,62 @@ describe('SnapshotVersionRequest', function() {
           next();
         }
       ], done);
+    });
+  });
+
+  describe('invalid json0v2 path', function() {
+    beforeEach(function(done) {
+      var doc = backend.connect().get('series', 'his-dark-materials');
+      async.series([
+        doc.create.bind(doc, [{title: 'Golden Compass'}]),
+        doc.submitOp.bind(doc, {p: ['0', 'title'], od: 'Golden Compass', oi: 'Northern Lights'}),
+        doc.submitOp.bind(doc, {p: ['1'], li: {title: 'Subtle Knife'}}),
+        doc.submitOp.bind(doc, {p: ['1'], lm: '0'})
+      ], done);
+    });
+
+    describe('json0v1', function() {
+      it('fetches v2 with json0v1', function(done) {
+        backend.connect().fetchSnapshot('series', 'his-dark-materials', 2, function(error, snapshot) {
+          if (error) return done(error);
+          expect(snapshot.data).to.eql([{title: 'Northern Lights'}]);
+          done();
+        });
+      });
+    });
+
+    describe('json0v2', function() {
+      var defaultType;
+
+      beforeEach(function() {
+        defaultType = types.defaultType;
+        types.defaultType = json0v2;
+        types.register(json0v2);
+      });
+
+      afterEach(function() {
+        types.defaultType = defaultType;
+        types.register(defaultType);
+      });
+
+      it('fetches a string-indexed list insertion with json0v2', function(done) {
+        backend.connect().fetchSnapshot('series', 'his-dark-materials', 2, function(error, snapshot) {
+          if (error) return done(error);
+          expect(snapshot.data).to.eql([{title: 'Northern Lights'}]);
+          done();
+        });
+      });
+
+      it('fetches a list move using a string target', function(done) {
+        backend.connect().fetchSnapshot('series', 'his-dark-materials', 4, function(error, snapshot) {
+          if (error) return done(error);
+          expect(snapshot.data).to.eql([
+            {title: 'Subtle Knife'},
+            {title: 'Northern Lights'}
+          ]);
+          done();
+        });
+      });
     });
   });
 });
