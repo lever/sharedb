@@ -3,6 +3,18 @@ var async = require('async');
 var util = require('../util');
 var sinon = require('sinon');
 
+function checkQueryEmitterState(connection) {
+  Object.values(connection.agent.subscribedQueries).forEach((queryEmitter) => {
+    expect(Array.from(queryEmitter.idSet)).to.have.members(queryEmitter.ids);
+  })
+}
+
+function checkQueryEmitterStates(connections) {
+  connections.forEach(function(connection) {
+    checkQueryEmitterState(connection)
+  })
+}
+
 module.exports = function(options) {
   var getQuery = options.getQuery;
 
@@ -10,6 +22,14 @@ module.exports = function(options) {
     before(function() {
       this.matchAllDbQuery = getQuery({query: {}});
     });
+
+    beforeEach(function() {
+      this.agents = []
+      this.backend.use('connect', (request, next) => {
+        if (request.agent) { this.agents.push(request.agent) }
+        next();
+      })
+    })
 
     it('creating a document updates a subscribed query', function(done) {
       var connection = this.backend.connect();
@@ -24,6 +44,7 @@ module.exports = function(options) {
         expect(index).equal(0);
         expect(util.pluck(query.results, 'id')).eql(['fido']);
         expect(util.pluck(query.results, 'data')).eql([{age: 3}]);
+        checkQueryEmitterStates([connection])
         done();
       });
     });
@@ -52,6 +73,7 @@ module.exports = function(options) {
           var results = util.sortById(query.results);
           expect(util.pluck(results, 'id')).eql(['fido', 'spot', 'taco']);
           expect(util.pluck(results, 'data')).eql([{age: 3}, {age: 5}, {age: 2}]);
+          checkQueryEmitterStates([connection])
           done();
         });
       });
@@ -81,6 +103,7 @@ module.exports = function(options) {
           var results = util.sortById(query.results);
           expect(util.pluck(results, 'id')).eql(['spot']);
           expect(util.pluck(results, 'data')).eql([{age: 5}]);
+          checkQueryEmitterStates([connection])
           done();
         });
       });
@@ -117,6 +140,7 @@ module.exports = function(options) {
           var results = util.sortById(query.results);
           expect(util.pluck(results, 'id')).eql(['spot']);
           expect(util.pluck(results, 'data')).eql([{age: 5}]);
+          checkQueryEmitterStates([connection1, connection2])
         });
       });
     });
@@ -197,6 +221,7 @@ module.exports = function(options) {
         });
         query.on('error', done);
         query.on('insert', function() {
+          checkQueryEmitterStates([connection, connection2])
           done();
         });
       });
@@ -244,6 +269,7 @@ module.exports = function(options) {
           var results = util.sortById(query.results);
           expect(util.pluck(results, 'id')).eql(['spot', 'taco']);
           expect(util.pluck(results, 'data')).eql([{age: 5}, {age: 2}]);
+          checkQueryEmitterStates([connection, connection2])
           done();
         }
         query.once('insert', function(docs) {
@@ -285,6 +311,7 @@ module.exports = function(options) {
           var results = util.sortById(query.results);
           expect(util.pluck(results, 'id')).eql(['fido', 'spot', 'taco']);
           expect(util.pluck(results, 'data')).eql([{age: 3}, {age: 5}, {age: 2}]);
+          checkQueryEmitterStates([connection])
           done();
         });
       });
@@ -314,6 +341,7 @@ module.exports = function(options) {
         // first document is its own batch; then subsequent creates
         // are debounced until after all other 9 docs are created
           expect(batchSizes).eql([1, 9]);
+          checkQueryEmitterStates([connection])
           done();
         }
       });
@@ -349,6 +377,7 @@ module.exports = function(options) {
         // first document is its own batch; then subsequent creates
         // are debounced until after all other 9 docs are created
           expect(batchSizes).eql([1, 9]);
+          checkQueryEmitterStates([connection])
           done();
         }
       });
@@ -369,6 +398,7 @@ module.exports = function(options) {
       query.on('error', done);
       query.on('insert', function(docs) {
         expect(util.pluck(docs, 'id')).eql(['fido']);
+        checkQueryEmitterStates([connection])
         done();
       });
     });
@@ -384,6 +414,7 @@ module.exports = function(options) {
       query.on('error', done);
       query.on('insert', function(docs) {
         expect(util.pluck(docs, 'id')).eql(['fido']);
+        checkQueryEmitterStates([connection])
         done();
       });
     });
@@ -399,7 +430,10 @@ module.exports = function(options) {
       query.on('error', done);
       query.on('insert', function() {
         count++;
-        if (count === 3) return done();
+        if (count === 3) {
+          checkQueryEmitterStates([connection])
+          return done();
+        }
         connection.get('dogs', count.toString()).on('error', done).create({});
       });
     });
@@ -445,6 +479,7 @@ module.exports = function(options) {
       query.on('extra', function(extra) {
         expect(extra).eql(2);
         expect(query.extra).eql(2);
+        checkQueryEmitterStates([connection])
         done();
       });
       connection.get('dogs', 'fido').on('error', done).create({age: 3});
@@ -521,6 +556,7 @@ module.exports = function(options) {
           var results = util.sortById(query.results);
           expect(util.pluck(results, 'id')).eql(['spot']);
           expect(util.pluck(results, 'data')).eql([{age: 3}]);
+          checkQueryEmitterStates([connection])
           done();
         });
       });
@@ -553,6 +589,7 @@ module.exports = function(options) {
           var results = util.sortById(query.results);
           expect(util.pluck(results, 'id')).eql(['fido', 'spot']);
           expect(util.pluck(results, 'data')).eql([{age: 3}, {age: 3}]);
+          checkQueryEmitterStates([connection])
           done();
         });
       });
@@ -588,6 +625,7 @@ module.exports = function(options) {
           expect(to).a('number');
           expect(util.pluck(query.results, 'id')).eql(['spot', 'fido']);
           expect(util.pluck(query.results, 'data')).eql([{age: 2}, {age: 3}]);
+          checkQueryEmitterStates([connection])
           done();
         });
       });
