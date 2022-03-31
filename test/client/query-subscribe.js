@@ -23,14 +23,6 @@ module.exports = function(options) {
       this.matchAllDbQuery = getQuery({query: {}});
     });
 
-    beforeEach(function() {
-      this.agents = []
-      this.backend.use('connect', (request, next) => {
-        if (request.agent) { this.agents.push(request.agent) }
-        next();
-      })
-    })
-
     it('creating a document updates a subscribed query', function(done) {
       var connection = this.backend.connect();
       var query = connection.createSubscribeQuery('dogs', this.matchAllDbQuery, null, function(err) {
