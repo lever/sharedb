@@ -68,9 +68,9 @@ Optional
 
 > Default: `{}`
 
-> `options.results` -- Object[]
+> `options.results` -- [`Doc`]({{ site.baseurl }}{% link api/doc.md %})[]
 
-> > Prior query results, if available, such as from server rendering
+> > Prior query results, if available, such as from server rendering. This should be an array of Doc instances, as obtained from  `connection.get(collection, id)`. If the docs' data is already available, invoke [`ingestSnapshot`]({{ site.baseurl }}{% link api/doc.md %}#ingestsnapshot) for each Doc instance beforehand to avoid re-transferring the data from the server.
 
 > `options.*` -- any
 
@@ -105,9 +105,9 @@ Optional
 
 > Default: `{}`
 
-> `options.results` -- Object[]
+> `options.results` -- [`Doc`]({{ site.baseurl }}{% link api/doc.md %})[]
 
-> > Prior query results, if available, such as from server rendering
+> > Prior query results, if available, such as from server rendering. This should be an array of Doc instances, as obtained from `connection.get(collection, id)`. If the docs' data is already available, invoke [`ingestSnapshot`]({{ site.baseurl }}{% link api/doc.md %}#ingestsnapshot) for each Doc instance beforehand to avoid re-transferring the data from the server.
 
 > `options.*` -- any
 
@@ -229,3 +229,18 @@ The document **must** be of a [type]({{ site.baseurl }}{% link types/index.md %}
 Return value
 
 > A [`Presence`]({{ site.baseurl }}{% link api/presence.md %}) instance tied to the given document
+
+### ping()
+
+Send a short message to the server, which will respond with another short message, emitted on the connection as a
+`'pong'` event.
+
+```js
+connection.ping()
+connection.on('pong', () => {
+  // The server is still there
+})
+```
+
+{: .warn }
+Calling `ping()` when not connected will throw an error with code `ERR_CANNOT_PING_OFFLINE`.
