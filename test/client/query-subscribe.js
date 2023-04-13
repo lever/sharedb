@@ -504,17 +504,19 @@ function commonTests(options) {
     });
   });
 
-    it('creating an additional document updates a subscribed query', function(done) {
-      var connection = this.backend.connect();
-      var matchAllDbQuery = this.matchAllDbQuery;
-      async.parallel([
-        function(cb) {
-          connection.get('dogs', 'fido').on('error', done).create({age: 3}, cb);
-        },
-        function(cb) {
-          connection.get('dogs', 'spot').on('error', done).create({age: 5}, cb);
-        }
-      ], function(err) {
+  it('creating an additional document updates a subscribed query', function(done) {
+    var connection = this.backend.connect();
+    var matchAllDbQuery = this.matchAllDbQuery;
+    async.parallel([
+      function(cb) {
+        connection.get('dogs', 'fido').on('error', done).create({age: 3}, cb);
+      },
+      function(cb) {
+        connection.get('dogs', 'spot').on('error', done).create({age: 5}, cb);
+      }
+    ], function(err) {
+      if (err) return done(err);
+      var query = connection.createSubscribeQuery('dogs', matchAllDbQuery, null, function(err) {
         if (err) return done(err);
         connection.get('dogs', 'taco').on('error', done).create({age: 2});
       });
@@ -530,6 +532,7 @@ function commonTests(options) {
         done();
       });
     });
+  });
 
   it('pollDebounce option reduces subsequent poll interval', function(done) {
     var clock = sinon.useFakeTimers();
