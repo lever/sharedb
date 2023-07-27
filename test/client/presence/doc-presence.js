@@ -796,6 +796,27 @@ describe('DocPresence', function() {
     ], done);
   });
 
+  it('errors local presence when listening to ops on a type that does not support presence', function(done) {
+    var jsonDoc = connection1.get('books', 'emma');
+    var jsonPresence = connection1.getDocPresence('books', 'emma');
+    var localJsonPresence = jsonPresence.create('json-presence');
+    localJsonPresence.submit({index: 1}, function() {
+      // Swallow error, which is expected since presence is unsupported
+    });
+
+    async.series([
+      jsonDoc.create.bind(jsonDoc, {title: 'Emma'}, 'json0'),
+      function(next) {
+        localJsonPresence.once('error', function(error) {
+          expect(error.code).to.eql('ERR_TYPE_DOES_NOT_SUPPORT_PRESENCE');
+          next();
+        });
+
+        jsonDoc.submitOp({p: ['author'], oi: 'Jane Austen'});
+      }
+    ], done);
+  });
+
   it('returns errors sent from the middleware', function(done) {
     backend.use(backend.MIDDLEWARE_ACTIONS.sendPresence, function(request, callback) {
       callback('some error');
@@ -957,5 +978,61 @@ describe('DocPresence', function() {
         next();
       }
     ], done);
+  });
+
+  it('does not transform presence submitted in an op event when the presence was created late', function(done) {
+    var localPresence1;
+
+    doc1.on('op', function() {
+      localPresence1.submit({index: 7});
+    });
+
+    localPresence1 = presence1.create('presence-1');
+
+    async.series([
+      presence2.subscribe.bind(presence2),
+      function(next) {
+        doc1.submitOp({index: 5, value: 'ern'});
+        presence2.on('receive', function(id, value) {
+          expect(value).to.eql({index: 7});
+          next();
+        });
+      }
+    ], done);
+  });
+
+  it('does transform late-created presence submitted in an op event by a deep second op', function(done) {
+    var localPresence1;
+
+    var submitted = false;
+    doc1.on('op', function() {
+      if (submitted) return;
+      submitted = true;
+      localPresence1.submit({index: 7});
+      doc1.submitOp({index: 5, value: 'akg'});
+    });
+
+    localPresence1 = presence1.create('presence-1');
+
+    async.series([
+      presence2.subscribe.bind(presence2),
+      function(next) {
+        doc1.submitOp({index: 5, value: 'ern'});
+        presence2.on('receive', function(id, value) {
+          expect(value).to.eql({index: 10});
+          next();
+        });
+      }
+    ], done);
+  });
+
+  it('does not trigger EventEmitter memory leak warnings', function() {
+    for (var i = 0; i < 100; i++) {
+      presence1.create();
+    }
+
+    expect(doc1._events.op.warned).not.to.be.ok;
+    var emitter = connection1._docPresenceEmitter._emitters[doc1.collection][doc1.id];
+    expect(emitter._events.op.warned).not.to.be.ok;
   });
 });

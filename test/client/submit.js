@@ -1,8 +1,10 @@
 var async = require('async');
 var expect = require('chai').expect;
+var sinon = require('sinon');
 var types = require('../../lib/types');
 var deserializedType = require('./deserialized-type');
 var numberType = require('./number-type');
+var errorHandler = require('../util').errorHandler;
 types.register(deserializedType.type);
 types.register(deserializedType.type2);
 types.register(numberType.type);
@@ -40,6 +42,19 @@ module.exports = function() {
         if (err) return done(err);
         expect(doc.data).eql({age: 3});
         expect(doc.version).eql(1);
+        done();
+      });
+    });
+
+    it('can create a new doc and pass options to getSnapshot', function(done) {
+      var connection = this.backend.connect();
+      connection.agent.custom = {
+        foo: 'bar'
+      };
+      var getSnapshotSpy = sinon.spy(this.backend.db, 'getSnapshot');
+      connection.get('dogs', 'fido').create({age: 3}, function(err) {
+        if (err) return done(err);
+        expect(getSnapshotSpy.firstCall.args[3]).to.haveOwnProperty('agentCustom').that.deep.equals({foo: 'bar'});
         done();
       });
     });
@@ -1194,6 +1209,53 @@ module.exports = function() {
           expect(doc.data.next).equal(null);
           done();
         });
+      });
+    });
+
+    describe('submitting when behind the server', function() {
+      var doc;
+      var remoteDoc;
+
+      beforeEach(function(done) {
+        var connection = this.backend.connect();
+        doc = connection.get('dogs', 'fido');
+        var remoteConnection = this.backend.connect();
+        remoteDoc = remoteConnection.get('dogs', 'fido');
+
+        async.series([
+          doc.create.bind(doc, {name: 'fido'}),
+          remoteDoc.fetch.bind(remoteDoc),
+          remoteDoc.submitOp.bind(remoteDoc, [{p: ['tricks'], oi: ['fetch']}]),
+          function(next) {
+            expect(doc.data).to.eql({name: 'fido'});
+            expect(remoteDoc.data).to.eql({name: 'fido', tricks: ['fetch']});
+            next();
+          }
+        ], done);
+      });
+
+      it('is sent ops it has missed when submitting, without calling fetch', function(done) {
+        sinon.spy(doc, 'fetch');
+
+        doc.submitOp([{p: ['age'], oi: 2}], errorHandler(done));
+
+        doc.once('op', function() {
+          expect(doc.data).to.eql({name: 'fido', tricks: ['fetch'], age: 2});
+          expect(doc.fetch.called).to.be.false;
+          done();
+        });
+      });
+
+      it('does not expose op metadata in the middleware when sending missing ops', function(done) {
+        this.backend.use('apply', function(request) {
+          expect(request.ops).to.have.length(1);
+          var op = request.ops[0];
+          expect(op.op).to.eql([{p: ['tricks'], oi: ['fetch']}]);
+          expect(op.m).to.be.undefined;
+          done();
+        });
+
+        doc.submitOp([{p: ['age'], oi: 2}], errorHandler(done));
       });
     });
   });
