@@ -40,7 +40,8 @@ var SHAREDB_RULES = {
 module.exports = {
   extends: 'google',
   parserOptions: {
-    ecmaVersion: 3
+    ecmaVersion: 3,
+    allowReserved: true
   },
   rules: Object.assign(
     {},
@@ -49,5 +50,18 @@ module.exports = {
   ),
   ignorePatterns: [
     '/docs/'
+  ],
+  overrides: [
+    {
+      files: ['examples/counter-json1-vite/*.js'],
+      parserOptions: {
+        ecmaVersion: 6,
+        sourceType: 'module',
+        allowReserved: false
+      },
+      rules: {
+        quotes: ['error', 'single']
+      }
+    }
   ]
 };

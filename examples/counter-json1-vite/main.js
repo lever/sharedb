@@ -1,9 +1,9 @@
-var ReconnectingWebSocket = require('reconnecting-websocket');
-var sharedb = require('sharedb/lib/client');
-var json1 = require('ot-json1');
+import ReconnectingWebSocket from 'reconnecting-websocket';
+import {json1} from 'sharedb-client-browser/dist/ot-json1-umd.cjs';
+import sharedb from 'sharedb-client-browser/dist/sharedb-client-umd.cjs';
 
 // Open WebSocket connection to ShareDB server
-var socket = new ReconnectingWebSocket('ws://' + window.location.host, [], {
+var socket = new ReconnectingWebSocket('ws://' + window.location.host + '/ws', [], {
   // ShareDB handles dropped messages, and buffering them while the socket
   // is closed has undefined behavior
   maxEnqueuedMessages: 0
@@ -33,5 +33,5 @@ function increment() {
   doc.submitOp(['numClicks', {ena: 1}]);
 }
 
-// Expose to index.html
-global.increment = increment;
+var button = document.querySelector('button.increment');
+button.addEventListener('click', increment);
