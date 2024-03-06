@@ -645,20 +645,14 @@ describe('DocPresence', function() {
       presence1.subscribe.bind(presence1),
       presence2.subscribe.bind(presence2),
       function(next) {
-        connection1._setState('disconnected');
-        next();
-      },
-      function(next) {
-        localPresence2.submit({index: 0}, errorHandler(done));
-        // We've not _actually_ disconnected the connection, so this
-        // event will still fire.
-        presence1.once('receive', function() {
+        connection1.once('closed', function() {
           next();
         });
+        connection1.close();
       },
+      localPresence2.submit.bind(localPresence2, {index: 0}),
       function(next) {
-        connection1._setState('connecting');
-        connection1._setState('connected');
+        backend.connect(connection1);
         presence1.once('receive', function(id, presence) {
           expect(presence).to.eql({index: 0});
           next();
@@ -1024,5 +1018,15 @@ describe('DocPresence', function() {
         });
       }
     ], done);
+  });
+
+  it('does not trigger EventEmitter memory leak warnings', function() {
+    for (var i = 0; i < 100; i++) {
+      presence1.create();
+    }
+
+    expect(doc1._events.op.warned).not.to.be.ok;
+    var emitter = connection1._docPresenceEmitter._emitters[doc1.collection][doc1.id];
+    expect(emitter._events.op.warned).not.to.be.ok;
   });
 });

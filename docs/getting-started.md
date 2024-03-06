@@ -38,6 +38,7 @@ The ShareDB backend expects an instance of a [`Stream`](https://nodejs.org/api/s
 ```js
 var express = require('express')
 var WebSocket = require('ws')
+var http = require('http')
 var ShareDB = require('sharedb')
 var WebSocketJSONStream = require('@teamwork/websocket-json-stream')
 
@@ -70,7 +71,11 @@ Try running the [working example](https://github.com/share/sharedb/tree/master/e
 var ReconnectingWebSocket = require('reconnecting-websocket')
 var Connection = require('sharedb/lib/client').Connection
 
-var socket = new ReconnectingWebSocket('ws://localhost:8080')
+var socket = new ReconnectingWebSocket('ws://localhost:8080', [], {
+  // ShareDB handles dropped messages, and buffering them while the socket
+  // is closed has undefined behavior
+  maxEnqueuedMessages: 0
+})
 var connection = new Connection(socket)
 
 var doc = connection.get('doc-collection', 'doc-id')
