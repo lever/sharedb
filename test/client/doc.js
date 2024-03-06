@@ -6,6 +6,7 @@ var richText = require('rich-text').type;
 var ShareDBError = require('../../lib/error');
 var errorHandler = require('../util').errorHandler;
 var sinon = require('sinon');
+var types = require('../../lib/types');
 
 describe('Doc', function() {
   beforeEach(function() {
@@ -514,6 +515,38 @@ describe('Doc', function() {
       ], done);
     });
 
+    it('throws an error when hard rollback fetch failed', function(done) {
+      var backend = this.backend;
+      doc = this.connection.get('dogs', 'scrappy');
+      types.register(richText);
+
+      async.series([
+        doc.create.bind(doc, {ops: [{insert: 'Scrappy'}]}, 'rich-text'),
+        function(next) {
+          backend.use('reply', function(replyContext, cb) {
+            if (replyContext.request.a !== 'f') return cb();
+            cb({code: 'FETCH_ERROR'});
+          });
+          backend.use('submit', function(_context, cb) {
+            cb(new ShareDBError('SUBMIT_ERROR'));
+          });
+          var nonInvertibleOp = [{insert: 'e'}];
+
+          var count = 0;
+          function expectError(code) {
+            count++;
+            return function(error) {
+              expect(error.code).to.equal(code);
+              count--;
+              if (!count) next();
+            };
+          }
+
+          doc.on('error', expectError('ERR_HARD_ROLLBACK_FETCH_FAILED'));
+          doc.submitOp(nonInvertibleOp, expectError('SUBMIT_ERROR'));
+        }
+      ], done);
+    });
 
     it('rescues an irreversible op collision', function(done) {
       // This test case attempts to reconstruct the following corner case, with
@@ -581,6 +614,106 @@ describe('Doc', function() {
           doc2.submitOp({p: ['colours'], oi: 'white,black,red'}, next);
         }
       ], done);
+    });
+  });
+
+  describe('errors on ops that could cause prototype corruption', function() {
+    function expectReceiveError(
+      connection,
+      collectionName,
+      docId,
+      expectedError,
+      done
+    ) {
+      connection.on('receive', function(request) {
+        var message = request.data;
+        if (message.c === collectionName && message.d === docId) {
+          if ('error' in message) {
+            request.data = null; // Stop further processing of the message
+            if (message.error.message === expectedError) {
+              return done();
+            } else {
+              return done('Unexpected ShareDB error: ' + message.error.message);
+            }
+          } else {
+            return done('Expected error on ' + collectionName + '.' + docId + ' but got no error');
+          }
+        }
+      });
+    }
+
+    ['__proto__', 'constructor'].forEach(function(badProp) {
+      it('Rejects ops with collection ' + badProp, function(done) {
+        var collectionName = badProp;
+        var docId = 'test-doc';
+        expectReceiveError(this.connection, collectionName, docId, 'Invalid collection', done);
+        this.connection.send({
+          a: 'op',
+          c: collectionName,
+          d: docId,
+          v: 0,
+          seq: this.connection.seq++,
+          x: {},
+          create: {type: 'http://sharejs.org/types/JSONv0', data: {name: 'Test doc'}}
+        });
+      });
+
+      it('Rejects ops with doc id ' + badProp, function(done) {
+        var collectionName = 'test-collection';
+        var docId = badProp;
+        expectReceiveError(this.connection, collectionName, docId, 'Invalid id', done);
+        this.connection.send({
+          a: 'op',
+          c: collectionName,
+          d: docId,
+          v: 0,
+          seq: this.connection.seq++,
+          x: {},
+          create: {type: 'http://sharejs.org/types/JSONv0', data: {name: 'Some doc'}}
+        });
+      });
+
+      it('Rejects ops with ' + badProp + ' as first path segment', function(done) {
+        var connection = this.connection;
+        var collectionName = 'test-collection';
+        var docId = 'test-doc';
+        connection.get(collectionName, docId).create({id: docId}, function(err) {
+          if (err) {
+            return done(err);
+          }
+          expectReceiveError(connection, collectionName, docId, 'Invalid path segment', done);
+          connection.send({
+            a: 'op',
+            c: collectionName,
+            d: docId,
+            v: 1,
+            seq: connection.seq++,
+            x: {},
+            op: [{p: [badProp, 'toString'], oi: 'oops'}]
+          });
+        });
+      });
+
+      it('Rejects ops with ' + badProp + ' as later path segment', function(done) {
+        var connection = this.connection;
+        var collectionName = 'test-collection';
+        var docId = 'test-doc';
+        connection.get(collectionName, docId).create({id: docId}, function(err) {
+          if (err) {
+            return done(err);
+          }
+          expectReceiveError(connection, collectionName, docId, 'Invalid path segment', done);
+          connection.send({
+            a: 'op',
+            c: collectionName,
+            d: docId,
+            v: 1,
+            seq: connection.seq++,
+            x: {},
+            op: [{p: ['foo', badProp], oi: 'oops'}]
+          });
+        });
+      });
     });
   });
 
