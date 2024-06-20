@@ -15,9 +15,9 @@ jobs:
     strategy:
       matrix:
         node:
-        - 16
         - 18
         - 20
+        - 22
     services:
       mongodb:
         image: mongo:4.4
@@ -25,8 +25,8 @@ jobs:
         - 27017:27017
     timeout-minutes: 10
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-node@v3
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node }}
     - name: Install

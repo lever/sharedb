@@ -5,14 +5,23 @@ var types = require('../../lib/types');
 var deserializedType = require('./deserialized-type');
 var numberType = require('./number-type');
 var errorHandler = require('../util').errorHandler;
+var richText = require('rich-text');
 types.register(deserializedType.type);
 types.register(deserializedType.type2);
 types.register(numberType.type);
+types.register(richText.type);
 
 module.exports = function() {
   describe('client submit', function() {
+    var id;
+    var idCount = 0;
+
+    beforeEach(function() {
+      id = 'dog-' + idCount++;
+    });
+
     it('can fetch an uncreated doc', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       expect(doc.data).equal(undefined);
       expect(doc.version).equal(null);
       doc.fetch(function(err) {
@@ -24,7 +33,7 @@ module.exports = function() {
     });
 
     it('can fetch then create a new doc', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.fetch(function(err) {
         if (err) return done(err);
         doc.create({age: 3}, function(err) {
@@ -37,7 +46,7 @@ module.exports = function() {
     });
 
     it('can create a new doc without fetching', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         expect(doc.data).eql({age: 3});
@@ -52,7 +61,7 @@ module.exports = function() {
         foo: 'bar'
       };
       var getSnapshotSpy = sinon.spy(this.backend.db, 'getSnapshot');
-      connection.get('dogs', 'fido').create({age: 3}, function(err) {
+      connection.get('dogs', id).create({age: 3}, function(err) {
         if (err) return done(err);
         expect(getSnapshotSpy.firstCall.args[3]).to.haveOwnProperty('agentCustom').that.deep.equals({foo: 'bar'});
         done();
@@ -60,7 +69,7 @@ module.exports = function() {
     });
 
     it('can create then delete then create a doc', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         expect(doc.data).eql({age: 3});
@@ -82,7 +91,7 @@ module.exports = function() {
     });
 
     it('can create then submit an op', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc.submitOp({p: ['age'], na: 2}, function(err) {
@@ -95,7 +104,7 @@ module.exports = function() {
     });
 
     it('can create then submit an op sync', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3});
       expect(doc.data).eql({age: 3});
       expect(doc.version).eql(null);
@@ -106,7 +115,7 @@ module.exports = function() {
     });
 
     it('submitting an op from a future version fails', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc.version++;
@@ -118,7 +127,7 @@ module.exports = function() {
     });
 
     it('cannot submit op on an uncreated doc', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.submitOp({p: ['age'], na: 2}, function(err) {
         expect(err).instanceOf(Error);
         done();
@@ -126,7 +135,7 @@ module.exports = function() {
     });
 
     it('cannot delete an uncreated doc', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.del(function(err) {
         expect(err).instanceOf(Error);
         done();
@@ -134,7 +143,7 @@ module.exports = function() {
     });
 
     it('ops submitted sync get composed', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3});
       doc.submitOp({p: ['age'], na: 2});
       doc.submitOp({p: ['age'], na: 2}, function(err) {
@@ -161,7 +170,7 @@ module.exports = function() {
     });
 
     it('does not compose ops when doc.preventCompose is true', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.preventCompose = true;
       doc.create({age: 3});
       doc.submitOp({p: ['age'], na: 2});
@@ -182,7 +191,7 @@ module.exports = function() {
     });
 
     it('resumes composing after doc.preventCompose is set back to false', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.preventCompose = true;
       doc.create({age: 3});
       doc.submitOp({p: ['age'], na: 2});
@@ -204,49 +213,154 @@ module.exports = function() {
       });
     });
 
-    it('can create a new doc then fetch', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      doc.create({age: 3}, function(err) {
-        if (err) return done(err);
-        doc.fetch(function(err) {
-          if (err) return done(err);
-          expect(doc.data).eql({age: 3});
-          expect(doc.version).eql(1);
-          done();
-        });
-      });
-    });
 
-    it('calling create on the same doc twice fails', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      doc.create({age: 3}, function(err) {
-        if (err) return done(err);
-        doc.create({age: 4}, function(err) {
-          expect(err).instanceOf(Error);
-          expect(doc.version).equal(1);
-          expect(doc.data).eql({age: 3});
-          done();
-        });
+    describe('create', function() {
+      describe('metadata enabled', function() {
+        runCreateTests();
       });
-    });
 
-    it('trying to create an already created doc without fetching fails and fetches', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
-      doc.create({age: 3}, function(err) {
-        if (err) return done(err);
-        doc2.create({age: 4}, function(err) {
-          expect(err).instanceOf(Error);
-          expect(doc2.version).equal(1);
-          expect(doc2.data).eql({age: 3});
-          done();
+      describe('no snapshot metadata available', function() {
+        beforeEach(function() {
+          var getSnapshot = this.backend.db.getSnapshot;
+          sinon.stub(this.backend.db, 'getSnapshot')
+            .callsFake(function() {
+              var args = Array.from(arguments);
+              var callback = args.pop();
+              args.push(function(error, snapshot) {
+                if (snapshot) delete snapshot.m;
+                callback(error, snapshot);
+              });
+              getSnapshot.apply(this, args);
+            });
+        });
+
+        afterEach(function() {
+          sinon.restore();
+        });
+
+        runCreateTests();
+
+        it('returns errors if the database cannot get committed op version', function(done) {
+          sinon.stub(this.backend.db, 'getCommittedOpVersion')
+            .callsFake(function() {
+              var args = Array.from(arguments);
+              var callback = args.pop();
+              callback(new Error('uh-oh'));
+            });
+
+          var doc1 = this.backend.connect().get('dogs', 'fido');
+          var doc2 = this.backend.connect().get('dogs', 'fido');
+          async.series([
+            doc1.create.bind(doc1, {age: 3}),
+            function(next) {
+              doc2.create({name: 'Fido'}, function(error) {
+                expect(error.message).to.equal('uh-oh');
+                next();
+              });
+            }
+          ], done);
         });
       });
+
+      function runCreateTests() {
+        it('can create a new doc then fetch', function(done) {
+          var doc = this.backend.connect().get('dogs', id);
+          doc.create({age: 3}, function(err) {
+            if (err) return done(err);
+            doc.fetch(function(err) {
+              if (err) return done(err);
+              expect(doc.data).eql({age: 3});
+              expect(doc.version).eql(1);
+              done();
+            });
+          });
+        });
+
+        it('calling create on the same doc twice fails', function(done) {
+          var doc = this.backend.connect().get('dogs', id);
+          doc.create({age: 3}, function(err) {
+            if (err) return done(err);
+            doc.create({age: 4}, function(err) {
+              expect(err).instanceOf(Error);
+              expect(doc.version).equal(1);
+              expect(doc.data).eql({age: 3});
+              done();
+            });
+          });
+        });
+
+        it('trying to create an already created doc without fetching fails and fetches', function(done) {
+          var doc = this.backend.connect().get('dogs', id);
+          var doc2 = this.backend.connect().get('dogs', id);
+          doc.create({age: 3}, function(err) {
+            if (err) return done(err);
+            doc2.create({age: 4}, function(err) {
+              expect(err).instanceOf(Error);
+              expect(doc2.version).equal(1);
+              expect(doc2.data).eql({age: 3});
+              done();
+            });
+          });
+        });
+
+        it('does not fail when resubmitting a create op', function(done) {
+          var backend = this.backend;
+          var connection = backend.connect();
+          var submitted = false;
+          backend.use('submit', function(request, next) {
+            if (!submitted) {
+              submitted = true;
+              connection.close();
+              backend.connect(connection);
+            }
+            next();
+          });
+
+          var count = 0;
+          backend.use('reply', function(message, next) {
+            next();
+            if (message.reply.a === 'op') count++;
+            if (count === 2) done();
+          });
+
+          var doc = connection.get('dogs', id);
+          doc.create({age: 10}, errorHandler(done));
+        });
+
+        it('does not fail when resubmitting a create op on a doc that was deleted', function(done) {
+          var backend = this.backend;
+          var connection1 = backend.connect();
+          var connection2 = backend.connect();
+          var doc1 = connection1.get('dogs', id);
+          var doc2 = connection2.get('dogs', id);
+
+          async.series([
+            doc1.create.bind(doc1, {age: 3}),
+            doc1.del.bind(doc1),
+            function(next) {
+              var submitted = false;
+              backend.use('submit', function(request, next) {
+                if (!submitted) {
+                  submitted = true;
+                  connection2.close();
+                  backend.connect(connection2);
+                }
+                next();
+              });
+
+              doc2.create({name: 'Fido'}, function(error) {
+                expect(doc2.version).to.equal(3);
+                next(error);
+              });
+            }
+          ], done);
+        });
+      }
     });
 
     it('server fetches and transforms by already committed op', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -268,8 +382,8 @@ module.exports = function() {
       this.backend.db.getOpsToSnapshot = function(collection, id, from, snapshot, options, callback) {
         callback(null, []);
       };
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -293,8 +407,8 @@ module.exports = function() {
           callback(null, ops);
         });
       };
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -324,7 +438,7 @@ module.exports = function() {
 
     it('resends create when disconnected before ack', function(done) {
       var backend = this.backend;
-      var doc = backend.connect().get('dogs', 'fido');
+      var doc = backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         expect(doc.version).equal(1);
@@ -336,13 +450,13 @@ module.exports = function() {
 
     it('resent create on top of deleted doc gets proper starting version', function(done) {
       var backend = this.backend;
-      var doc = backend.connect().get('dogs', 'fido');
+      var doc = backend.connect().get('dogs', id);
       doc.create({age: 4}, function(err) {
         if (err) return done(err);
         doc.del(function(err) {
           if (err) return done(err);
 
-          var doc2 = backend.connect().get('dogs', 'fido');
+          var doc2 = backend.connect().get('dogs', id);
           doc2.create({age: 3}, function(err) {
             if (err) return done(err);
             expect(doc2.version).equal(3);
@@ -356,7 +470,7 @@ module.exports = function() {
 
     it('resends delete when disconnected before ack', function(done) {
       var backend = this.backend;
-      var doc = backend.connect().get('dogs', 'fido');
+      var doc = backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc.del(function(err) {
@@ -371,7 +485,7 @@ module.exports = function() {
 
     it('op submitted during inflight create does not compose and gets flushed', function(done) {
       this.backend.connect(null, null, function(connection) {
-        var doc = connection.get('dogs', 'fido');
+        var doc = connection.get('dogs', id);
         doc.create({age: 3});
         // Submit an op after message is sent but before server has a chance to reply
         process.nextTick(function() {
@@ -386,8 +500,8 @@ module.exports = function() {
     });
 
     it('can commit then fetch in a new connection to get the same data', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -403,8 +517,8 @@ module.exports = function() {
     });
 
     it('an op submitted concurrently is transformed by the first', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -439,8 +553,8 @@ module.exports = function() {
     });
 
     it('second of two concurrent creates is rejected', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       var count = 0;
       doc.create({age: 3}, function(err) {
         count++;
@@ -471,8 +585,8 @@ module.exports = function() {
     });
 
     it('concurrent delete operations transform', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -508,8 +622,8 @@ module.exports = function() {
 
     it('submits retry below the backend.maxSubmitRetries threshold', function(done) {
       this.backend.maxSubmitRetries = 10;
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -529,8 +643,8 @@ module.exports = function() {
     it('submits fail above the backend.maxSubmitRetries threshold', function(done) {
       var backend = this.backend;
       this.backend.maxSubmitRetries = 0;
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -570,8 +684,8 @@ module.exports = function() {
     });
 
     it('pending delete transforms incoming ops', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -597,8 +711,8 @@ module.exports = function() {
     });
 
     it('pending delete transforms incoming delete', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -624,8 +738,8 @@ module.exports = function() {
     });
 
     it('submitting op after delete returns error', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -644,8 +758,8 @@ module.exports = function() {
     });
 
     it('transforming pending op by server delete returns error', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -666,8 +780,8 @@ module.exports = function() {
     });
 
     it('transforming pending op by server create returns error', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc.del(function(err) {
@@ -691,8 +805,8 @@ module.exports = function() {
     });
 
     it('second client can create following delete', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc.del(function(err) {
@@ -708,28 +822,28 @@ module.exports = function() {
     });
 
     it('doc.pause() prevents ops from being sent', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.pause();
       doc.create({age: 3}, done);
       done();
     });
 
     it('can call doc.resume() without pausing', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.resume();
       doc.create({age: 3}, done);
     });
 
     it('doc.resume() resumes sending ops after pause', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.pause();
       doc.create({age: 3}, done);
       doc.resume();
     });
 
     it('pending ops are transformed by ops from other clients', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc2.fetch(function(err) {
@@ -784,7 +898,7 @@ module.exports = function() {
     });
 
     it('snapshot fetch does not revert the version of deleted doc without pending ops', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       this.backend.use('readSnapshots', function(request, next) {
         doc.create({age: 3});
         doc.del(next);
@@ -797,7 +911,7 @@ module.exports = function() {
     });
 
     it('snapshot fetch does not revert the version of deleted doc with pending ops', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       this.backend.use('readSnapshots', function(request, next) {
         doc.create({age: 3}, function(err) {
           if (err) return done(err);
@@ -815,49 +929,11 @@ module.exports = function() {
       });
     });
 
-    it('snapshot fetch from query does not advance version of doc with pending ops', function(done) {
-      var backend = this.backend;
-      backend.connect(null, null, function(connection1) {
-        backend.connect(null, null, function(connection2) {
-          var doc = connection1.get('dogs', 'fido');
-          var doc2 = connection2.get('dogs', 'fido');
-          doc.create({name: 'kido'}, function(err) {
-            if (err) return done(err);
-            doc2.fetch(function(err) {
-              if (err) return done(err);
-              doc2.submitOp({p: ['name', 0], si: 'f'}, function(err) {
-                if (err) return done(err);
-                expect(doc2.data).eql({name: 'fkido'});
-                doc.connection.createFetchQuery('dogs', {}, null, function(err) {
-                  if (err) return done(err);
-                  doc.resume();
-                });
-              });
-            });
-          });
-          process.nextTick(function() {
-            doc.pause();
-            doc.submitOp({p: ['name', 0], sd: 'k'}, function(err) {
-              if (err) return done(err);
-              doc.pause();
-              doc2.fetch(function(err) {
-                if (err) return done(err);
-                expect(doc2.version).equal(3);
-                expect(doc2.data).eql({name: 'fido'});
-                done();
-              });
-            });
-            doc.del();
-          });
-        });
-      });
-    });
-
     it('passing an error in submit middleware rejects a create and calls back with the erorr', function(done) {
       this.backend.use('submit', function(request, next) {
         next({message: 'Custom error'});
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         expect(err.message).equal('Custom error');
         expect(doc.version).equal(0);
@@ -872,7 +948,7 @@ module.exports = function() {
       this.backend.use('submit', function(request, next) {
         next({message: 'Custom error'});
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3});
       expect(doc.version).equal(null);
       expect(doc.data).eql({age: 3});
@@ -891,7 +967,7 @@ module.exports = function() {
         if (submitCount === 1) return next({message: 'Custom error'});
         next();
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       async.parallel([
         function(cb) {
           doc.create({age: 3}, function(err) {
@@ -919,11 +995,32 @@ module.exports = function() {
       ], done);
     });
 
+
+    it('request.rejectedError() soft rejects main op and throws for pending ops on hard rollback', function(done) {
+      this.backend.use('submit', function(request, next) {
+        if (request.op.create) {
+          next(request.rejectedError());
+        }
+      });
+
+      var connection = this.backend.connect();
+      var doc = connection.get('dogs', id);
+      doc.preventCompose = true;
+
+      doc.create({age: 3}, function(error) {
+        if (error) done(error);
+      });
+      doc.submitOp({p: ['age'], na: 1}, function(err) {
+        expect(err.code).to.be.equal('ERR_PENDING_OP_REMOVED_BY_OP_SUBMIT_REJECTED');
+        done();
+      });
+    });
+
     it('request.rejectedError() soft rejects a create', function(done) {
       this.backend.use('submit', function(request, next) {
         next(request.rejectedError());
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         expect(doc.version).equal(0);
@@ -938,7 +1035,7 @@ module.exports = function() {
       this.backend.use('submit', function(request, next) {
         next(request.rejectedError());
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3});
       expect(doc.version).equal(null);
       expect(doc.data).eql({age: 3});
@@ -949,12 +1046,35 @@ module.exports = function() {
       });
     });
 
+    it(
+      'request.rejectedError() soft rejects main op and throws for pending ops on hard rollback without callback',
+      function(done) {
+        this.backend.use('submit', function(request, next) {
+          if (request.op.create) {
+            next(request.rejectedError());
+          }
+        });
+
+        var connection = this.backend.connect();
+        var doc = connection.get('dogs', id);
+        doc.preventCompose = true;
+
+        doc.create({age: 3});
+        doc.submitOp({p: ['age'], na: 1});
+
+        doc.on('error', function(err) {
+          expect(err.code).to.be.equal('ERR_PENDING_OP_REMOVED_BY_OP_SUBMIT_REJECTED');
+          done();
+        });
+      }
+    );
+
     it('passing an error in submit middleware rejects an op and calls back with the erorr', function(done) {
       this.backend.use('submit', function(request, next) {
         if ('op' in request.op) return next({message: 'Custom error'});
         next();
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc.submitOp({p: ['age'], na: 1}, function(err) {
@@ -973,7 +1093,7 @@ module.exports = function() {
         if ('op' in request.op) return next({message: 'Custom error'});
         next();
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc.submitOp({p: ['age'], na: 1});
@@ -995,7 +1115,7 @@ module.exports = function() {
         if (submitCount === 2) return next({message: 'Custom error'});
         next();
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         async.parallel([
@@ -1029,7 +1149,7 @@ module.exports = function() {
         if ('op' in request.op) return next(request.rejectedError());
         next();
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc.submitOp({p: ['age'], na: 1}, function(err) {
@@ -1043,12 +1163,71 @@ module.exports = function() {
       });
     });
 
+    it('request.rejectedError() soft rejects main op and pending ops for invertible type', function(done) {
+      var rejectedOnce = false;
+      this.backend.use('submit', function(request, next) {
+        if ('op' in request.op && !rejectedOnce) {
+          rejectedOnce = true;
+          return next(request.rejectedError());
+        }
+        next();
+      });
+      var doc = this.backend.connect().get('dogs', id);
+      doc.preventCompose = true;
+
+      doc.create({age: 3}, function(err) {
+        if (err) return done(err);
+        doc.submitOp({p: ['age'], na: 1}, function(err) {
+          if (err) return done(err);
+        });
+        doc.submitOp({p: ['age'], na: 3}, function(err) {
+          if (err) return done(err);
+          expect(doc.version).equal(2);
+          expect(doc.data).eql({age: 6});
+          done();
+        });
+        expect(doc.version).equal(1);
+        expect(doc.data).eql({age: 7});
+      });
+    });
+
+    it(
+      'request.rejectedError() soft rejects main op and throws for pending ops for non invertible type',
+      function(done) {
+        var rejectedOnce = false;
+        this.backend.use('submit', function(request, next) {
+          if ('op' in request.op && !rejectedOnce) {
+            rejectedOnce = true;
+            return next(request.rejectedError());
+          }
+          next();
+        });
+        var doc = this.backend.connect().get('dogs', id);
+        doc.preventCompose = true;
+
+        doc.create({ops: [{insert: 'Scrappy'}]}, 'rich-text', function(err) {
+          if (err) return done(err);
+
+          var nonInvertibleOp = [{insert: 'a'}];
+          doc.submitOp(nonInvertibleOp, function(err) {
+            if (err) return done(err);
+          });
+          doc.submitOp([{insert: 'b'}], function(err) {
+            expect(err.code).to.be.equal('ERR_PENDING_OP_REMOVED_BY_OP_SUBMIT_REJECTED');
+            done();
+          });
+          expect(doc.version).equal(1);
+          expect(doc.data.ops).eql([{insert: 'baScrappy'}]);
+        });
+      }
+    );
+
     it('request.rejectedError() soft rejects an op without callback', function(done) {
       this.backend.use('submit', function(request, next) {
         if ('op' in request.op) return next(request.rejectedError());
         next();
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc.submitOp({p: ['age'], na: 1});
@@ -1067,8 +1246,8 @@ module.exports = function() {
         if (request.op) delete request.op.op;
         next();
       });
-      var doc = this.backend.connect().get('dogs', 'fido');
-      var doc2 = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
+      var doc2 = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc.submitOp({p: ['age'], na: 1}, function(err) {
@@ -1088,7 +1267,7 @@ module.exports = function() {
     });
 
     it('submitting an invalid op message returns error', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create({age: 3}, function(err) {
         if (err) return done(err);
         doc._submit({}, null, function(err) {
@@ -1099,7 +1278,7 @@ module.exports = function() {
     });
 
     it('allows snapshot and op to be a non-object', function(done) {
-      var doc = this.backend.connect().get('dogs', 'fido');
+      var doc = this.backend.connect().get('dogs', id);
       doc.create(5, numberType.type.uri, function(err) {
         if (err) return done(err);
         expect(doc.data).to.equal(5);
@@ -1113,7 +1292,7 @@ module.exports = function() {
 
     describe('type.deserialize', function() {
       it('can create a new doc', function(done) {
-        var doc = this.backend.connect().get('dogs', 'fido');
+        var doc = this.backend.connect().get('dogs', id);
         doc.create([3], deserializedType.type.uri, function(err) {
           if (err) return done(err);
           expect(doc.data).instanceOf(deserializedType.Node);
@@ -1125,10 +1304,10 @@ module.exports = function() {
 
       it('is stored serialized in backend', function(done) {
         var db = this.backend.db;
-        var doc = this.backend.connect().get('dogs', 'fido');
+        var doc = this.backend.connect().get('dogs', id);
         doc.create([3], deserializedType.type.uri, function(err) {
           if (err) return done(err);
-          db.getSnapshot('dogs', 'fido', null, null, function(err, snapshot) {
+          db.getSnapshot('dogs', id, null, null, function(err, snapshot) {
             if (err) return done(err);
             expect(snapshot.data).eql([3]);
             done();
@@ -1137,8 +1316,8 @@ module.exports = function() {
       });
 
       it('deserializes on fetch', function(done) {
-        var doc = this.backend.connect().get('dogs', 'fido');
-        var doc2 = this.backend.connect().get('dogs', 'fido');
+        var doc = this.backend.connect().get('dogs', id);
+        var doc2 = this.backend.connect().get('dogs', id);
         doc.create([3], deserializedType.type.uri, function(err) {
           if (err) return done(err);
           doc2.fetch(function(err) {
@@ -1152,7 +1331,7 @@ module.exports = function() {
       });
 
       it('can create then submit an op', function(done) {
-        var doc = this.backend.connect().get('dogs', 'fido');
+        var doc = this.backend.connect().get('dogs', id);
         doc.create([3], deserializedType.type.uri, function(err) {
           if (err) return done(err);
           doc.submitOp({insert: 0, value: 2}, function(err) {
@@ -1166,8 +1345,8 @@ module.exports = function() {
       });
 
       it('server fetches and transforms by already committed op', function(done) {
-        var doc = this.backend.connect().get('dogs', 'fido');
-        var doc2 = this.backend.connect().get('dogs', 'fido');
+        var doc = this.backend.connect().get('dogs', id);
+        var doc2 = this.backend.connect().get('dogs', id);
         doc.create([3], deserializedType.type.uri, function(err) {
           if (err) return done(err);
           doc2.fetch(function(err) {
@@ -1190,7 +1369,7 @@ module.exports = function() {
 
     describe('type.createDeserialized', function() {
       it('can create a new doc', function(done) {
-        var doc = this.backend.connect().get('dogs', 'fido');
+        var doc = this.backend.connect().get('dogs', id);
         doc.create([3], deserializedType.type2.uri, function(err) {
           if (err) return done(err);
           expect(doc.data).instanceOf(deserializedType.Node);
@@ -1201,7 +1380,7 @@ module.exports = function() {
       });
 
       it('can create a new doc from deserialized form', function(done) {
-        var doc = this.backend.connect().get('dogs', 'fido');
+        var doc = this.backend.connect().get('dogs', id);
         doc.create(new deserializedType.Node(3), deserializedType.type2.uri, function(err) {
           if (err) return done(err);
           expect(doc.data).instanceOf(deserializedType.Node);
@@ -1218,9 +1397,9 @@ module.exports = function() {
 
       beforeEach(function(done) {
         var connection = this.backend.connect();
-        doc = connection.get('dogs', 'fido');
+        doc = connection.get('dogs', id);
         var remoteConnection = this.backend.connect();
-        remoteDoc = remoteConnection.get('dogs', 'fido');
+        remoteDoc = remoteConnection.get('dogs', id);
 
         async.series([
           doc.create.bind(doc, {name: 'fido'}),
